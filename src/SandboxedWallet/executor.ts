@@ -1,4 +1,4 @@
-import { WalletManifest, WalletPermissions } from "../types/wallet";
+import { WalletManifest, WalletPermissions } from "../types";
 import { NearConnector } from "../NearConnector";
 import { parseUrl } from "../helpers/url";
 import { uuid4 } from "../helpers/uuid";
@@ -141,7 +141,7 @@ class SandboxExecutor {
 
     if (event.data.method === "walletConnect.getProjectId") {
       this.assertPermissions(iframe, "walletConnect", event);
-      success(this.connector.walletConnect?.projectId);
+      success(this.connector.walletConnectProjectId);
       return;
     }
 

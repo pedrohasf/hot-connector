@@ -1,6 +1,8 @@
 import { EMeteorWalletSignInType, MeteorWallet } from "@meteorwallet/sdk";
-import { SelectorStorageKeyStore } from "./utils/keystore";
 import * as nearAPI from "near-api-js";
+
+import { connectorActionsToNearActions, ConnectorAction } from "./utils/action";
+import { SelectorStorageKeyStore } from "./utils/keystore";
 import { NearRpc } from "./utils/rpc";
 
 const keyStore = new SelectorStorageKeyStore();
@@ -135,7 +137,7 @@ const createMeteorWallet = async () => {
       throw new Error(`Couldn't sign message owner: ${response.message}`);
     },
 
-    async signAndSendTransaction({ network, receiverId, actions }: any) {
+    async signAndSendTransaction({ receiverId, actions, network }: { receiverId: string; actions: ConnectorAction[]; network: string }) {
       const state = await getState(network);
       if (!state.wallet.isSignedIn()) throw new Error("Wallet not signed in");
 
@@ -143,20 +145,28 @@ const createMeteorWallet = async () => {
       return await tryApprove({
         title: "Sign transaction",
         button: "Open wallet",
-
-        // @ts-ignore
-        execute: async () => account["signAndSendTransaction_direct"]({ receiverId: receiverId, actions }),
+        execute: async () =>
+          account["signAndSendTransaction_direct"]({
+            actions: connectorActionsToNearActions(actions),
+            receiverId: receiverId,
+          }),
       });
     },
 
-    async signAndSendTransactions({ network, transactions }: any) {
+    async signAndSendTransactions({ transactions, network }: { transactions: { receiverId: string; actions: ConnectorAction[] }[]; network: string }) {
       const state = await getState(network);
       if (!state.wallet.isSignedIn()) throw new Error("Wallet not signed in");
 
       return await tryApprove({
         title: "Sign transactions",
         button: "Open wallet",
-        execute: async () => state.wallet.requestSignTransactions({ transactions }),
+        execute: async () =>
+          state.wallet.requestSignTransactions({
+            transactions: transactions.map((transaction) => ({
+              actions: connectorActionsToNearActions(transaction.actions),
+              receiverId: transaction.receiverId,
+            })),
+          }),
       });
     },
   };

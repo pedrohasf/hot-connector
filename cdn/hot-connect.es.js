@@ -1,4 +1,4 @@
-class b {
+class v {
   async get(e) {
     return typeof window > "u" ? null : localStorage.getItem(e);
   }
@@ -9,16 +9,101 @@ class b {
     typeof window > "u" || localStorage.removeItem(e);
   }
 }
-const u = () => typeof window < "u" && typeof window.crypto < "u" && typeof window.crypto.randomUUID == "function" ? window.crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(r) {
+const k = (r) => {
+  try {
+    return JSON.parse(new TextDecoder().decode(r));
+  } catch {
+    return r;
+  }
+}, w = (r) => r.map((e) => {
+  if ("type" in e) return e;
+  if (e.functionCall)
+    return {
+      type: "FunctionCall",
+      params: {
+        methodName: e.functionCall.methodName,
+        args: k(e.functionCall.args),
+        gas: e.functionCall.gas.toString(),
+        deposit: e.functionCall.deposit.toString()
+      }
+    };
+  if (e.deployGlobalContract)
+    return {
+      type: "DeployGlobalContract",
+      params: {
+        code: e.deployGlobalContract.code,
+        deployMode: {
+          AccountId: e.deployGlobalContract.deployMode.AccountId,
+          CodeHash: e.deployGlobalContract.deployMode.CodeHash
+        }
+      }
+    };
+  if (e.createAccount)
+    return { type: "CreateAccount" };
+  if (e.useGlobalContract)
+    return {
+      type: "UseGlobalContract",
+      params: {
+        contractIdentifier: {
+          AccountId: e.useGlobalContract.contractIdentifier.AccountId,
+          CodeHash: e.useGlobalContract.contractIdentifier.CodeHash
+        }
+      }
+    };
+  if (e.deployContract)
+    return {
+      type: "DeployContract",
+      params: { code: e.deployContract.code }
+    };
+  if (e.deleteAccount)
+    return {
+      type: "DeleteAccount",
+      params: { beneficiaryId: e.deleteAccount.beneficiaryId }
+    };
+  if (e.deleteKey)
+    return {
+      type: "DeleteKey",
+      params: { publicKey: e.deleteKey.publicKey.toString() }
+    };
+  if (e.transfer)
+    return {
+      type: "Transfer",
+      params: { deposit: e.transfer.deposit.toString() }
+    };
+  if (e.stake)
+    return {
+      type: "Stake",
+      params: {
+        stake: e.stake.stake.toString(),
+        publicKey: e.stake.publicKey.toString()
+      }
+    };
+  if (e.addKey)
+    return {
+      type: "AddKey",
+      params: {
+        publicKey: e.addKey.publicKey.toString(),
+        accessKey: {
+          nonce: Number(e.addKey.accessKey.nonce),
+          permission: e.addKey.accessKey.permission.functionCall ? {
+            receiverId: e.addKey.accessKey.permission.functionCall.receiverId,
+            allowance: e.addKey.accessKey.permission.functionCall.allowance?.toString(),
+            methodNames: e.addKey.accessKey.permission.functionCall.methodNames
+          } : "FullAccess"
+        }
+      }
+    };
+  throw new Error("Unsupported action type");
+}), g = () => typeof window < "u" && typeof window.crypto < "u" && typeof window.crypto.randomUUID == "function" ? window.crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(r) {
   const e = Math.random() * 16 | 0;
   return (r === "x" ? e : e & 3 | 8).toString(16);
 });
-class v {
+class S {
   constructor(e, t) {
     this.connector = e, this.manifest = t;
   }
   callParentFrame(e, t) {
-    const n = u();
+    const n = g();
     return window.parent.postMessage({ type: "near-wallet-injected-request", id: n, method: e, params: t }, "*"), new Promise((s, o) => {
       const i = (a) => {
         a.data.type === "near-wallet-injected-response" && a.data.id === n && (window.removeEventListener("message", i), a.data.success ? s(a.data.result) : o(a.data.error));
@@ -27,8 +112,12 @@ class v {
     });
   }
   async signIn(e) {
-    const t = e?.network || this.connector.network, n = await this.callParentFrame("near:signIn", { network: t });
-    return Array.isArray(n) ? n : [n];
+    const t = await this.callParentFrame("near:signIn", {
+      network: e?.network || this.connector.network,
+      contractId: e?.contractId,
+      methodNames: e?.methodNames
+    });
+    return Array.isArray(t) ? t : [t];
   }
   async signOut(e) {
     const t = { ...e, network: e?.network || this.connector.network };
@@ -39,14 +128,15 @@ class v {
     return this.callParentFrame("near:getAccounts", t);
   }
   async signAndSendTransaction(e) {
-    await this.connector.validateBannedNearAddressInTx(e);
-    const t = { ...e, network: e.network || this.connector.network };
-    return this.callParentFrame("near:signAndSendTransaction", t);
+    const t = w(e.actions), n = { ...e, actions: t, network: e.network || this.connector.network };
+    return this.callParentFrame("near:signAndSendTransaction", n);
   }
   async signAndSendTransactions(e) {
-    for (const n of e.transactions) await this.connector.validateBannedNearAddressInTx(n);
     const t = { ...e, network: e.network || this.connector.network };
-    return this.callParentFrame("near:signAndSendTransactions", t);
+    return t.transactions = t.transactions.map((n) => ({
+      actions: w(n.actions),
+      receiverId: n.receiverId
+    })), this.callParentFrame("near:signAndSendTransactions", t);
   }
   async signMessage(e) {
     const t = { ...e, network: e.network || this.connector.network };
@@ -111,27 +201,27 @@ class f {
     e ? delete this.events[e] : this.events = {};
   }
 }
-function k(r) {
+function C(r) {
   return r.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-const g = Symbol("htmlTag");
-function w(r, ...e) {
+const m = Symbol("htmlTag");
+function u(r, ...e) {
   let t = r[0];
   for (let n = 0; n < e.length; n++) {
     for (const s of Array.isArray(e[n]) ? e[n] : [e[n]]) {
-      const o = s?.[g] ? s[g] : k(String(s ?? ""));
+      const o = s?.[m] ? s[m] : C(String(s ?? ""));
       t += o;
     }
     t += r[n + 1];
   }
   return Object.freeze({
-    [g]: t,
+    [m]: t,
     get html() {
       return t;
     }
   });
 }
-const S = (r) => (
+const I = (r) => (
   /*css*/
   `
 ${r} * {
@@ -385,12 +475,12 @@ ${r} .connect-item p {
   margin: 0;
 }
 `
-), p = `n${Math.random().toString(36).substring(2, 15)}`;
+), y = `n${Math.random().toString(36).substring(2, 15)}`;
 if (typeof document < "u") {
   const r = document.createElement("style");
-  r.textContent = S(`.${p}`), document.head.append(r);
+  r.textContent = I(`.${y}`), document.head.append(r);
 }
-class y {
+class b {
   constructor(e) {
     this.delegate = e;
   }
@@ -398,7 +488,7 @@ class y {
   root = document.createElement("div");
   state = {};
   get dom() {
-    return w``;
+    return u``;
   }
   disposables = [];
   addListener(e, t, n) {
@@ -416,7 +506,7 @@ class y {
     this.state = { ...this.state, ...e }, this.root.innerHTML = this.dom.html, this.handlers();
   }
   create({ show: e = !0 }) {
-    this.root.className = `${p} hot-connector-popup`, this.root.innerHTML = this.dom.html, document.body.append(this.root), this.handlers();
+    this.root.className = `${y} hot-connector-popup`, this.root.innerHTML = this.dom.html, document.body.append(this.root), this.handlers();
     const t = this.root.querySelector(".modal-container"), n = this.root.querySelector(".modal-content");
     n.style.transform = "translateY(50px)", t.style.opacity = "0", this.root.style.display = "none", e && setTimeout(() => this.show(), 10);
   }
@@ -438,7 +528,7 @@ class y {
     }, 200));
   }
 }
-class I extends y {
+class E extends b {
   constructor(e) {
     super(e), this.delegate = e;
   }
@@ -449,7 +539,7 @@ class I extends y {
     super.create({ show: !1 }), this.root.querySelector(".modal-body").appendChild(this.delegate.iframe), this.delegate.iframe.style.width = "100%", this.delegate.iframe.style.height = "720px", this.delegate.iframe.style.border = "none";
   }
   get dom() {
-    return w` <div class="modal-container">
+    return u` <div class="modal-container">
       <div class="modal-content">
         <div class="modal-body" style="padding: 0; overflow: auto;"></div>
         <div class="footer">
@@ -461,7 +551,7 @@ class I extends y {
     </div>`;
   }
 }
-async function C(r) {
+async function A(r) {
   const e = await r.executor.getAllStorage(), t = r.executor.connector.providers, n = r.executor.manifest, s = r.id, o = r.code.replaceAll(".localStorage", ".sandboxedLocalStorage").replaceAll("window.top", "window.selector").replaceAll("window.open", "window.selector.open");
   return (
     /* html */
@@ -777,15 +867,15 @@ async function C(r) {
     `
   );
 }
-class E {
+class P {
   constructor(e, t, n) {
-    this.executor = e, this.origin = u(), this.handler = (o) => {
+    this.executor = e, this.origin = g(), this.handler = (o) => {
       o.data.origin === this.origin && (o.data.method === "wallet-ready" && this.readyPromiseResolve(), n(this, o));
     }, window.addEventListener("message", this.handler);
     const s = [];
-    this.executor.checkPermissions("usb") && s.push("usb *;"), this.executor.checkPermissions("hid") && s.push("hid *;"), this.executor.checkPermissions("clipboardRead") && s.push("clipboard-read;"), this.executor.checkPermissions("clipboardWrite") && s.push("clipboard-write;"), this.iframe.allow = s.join(" "), this.iframe.setAttribute("sandbox", "allow-scripts"), C({ id: this.origin, executor: this.executor, code: t }).then((o) => {
+    this.executor.checkPermissions("usb") && s.push("usb *;"), this.executor.checkPermissions("hid") && s.push("hid *;"), this.executor.checkPermissions("clipboardRead") && s.push("clipboard-read;"), this.executor.checkPermissions("clipboardWrite") && s.push("clipboard-write;"), this.iframe.allow = s.join(" "), this.iframe.setAttribute("sandbox", "allow-scripts allow-modals"), A({ id: this.origin, executor: this.executor, code: t }).then((o) => {
       this.executor.connector.logger?.log("Iframe code injected"), this.iframe.srcdoc = o;
-    }), this.popup = new I({
+    }), this.popup = new E({
       iframe: this.iframe,
       onApprove: () => {
       },
@@ -820,8 +910,8 @@ class E {
     window.removeEventListener("message", this.handler), this.popup.destroy();
   }
 }
-const A = u();
-class P {
+const $ = g();
+class M {
   constructor(e, t) {
     this.connector = e, this.manifest = t, this.storageSpace = t.id;
   }
@@ -907,7 +997,7 @@ class P {
       return;
     }
     if (t.data.method === "walletConnect.getProjectId") {
-      this.assertPermissions(e, "walletConnect", t), n(this.connector.walletConnect?.projectId);
+      this.assertPermissions(e, "walletConnect", t), n(this.connector.walletConnectProjectId);
       return;
     }
     if (t.data.method === "walletConnect.disconnect") {
@@ -959,7 +1049,7 @@ class P {
         o.openTelegramLink(t.data.params.url);
         return;
       }
-      const i = window.open(t.data.params.url, "_blank", t.data.params.features), a = i ? u() : null, l = (c) => {
+      const i = window.open(t.data.params.url, "_blank", t.data.params.features), a = i ? g() : null, l = (c) => {
         const h = d(t.data.params.url);
         h && h.origin === c.origin && e.postMessage(c.data);
       };
@@ -994,7 +1084,7 @@ class P {
       return this.connector.logger?.log("New version of code already checked"), this.actualCode;
     let n = d(e.manifest.executor);
     if (n || (n = d(location.origin + e.manifest.executor)), !n) throw new Error("Invalid executor URL");
-    n.searchParams.set("nonce", A);
+    n.searchParams.set("nonce", $);
     const s = await fetch(n.toString()).then((o) => o.text());
     return this.connector.logger?.log("New version of code fetched"), this.actualCode = s, s === t ? (this.connector.logger?.log("New version of code is the same as the current version"), this.actualCode) : (await this.connector.db.setItem(`${this.manifest.id}:${this.manifest.version}`, s), this.connector.logger?.log("New version of code saved to cache"), s);
   }
@@ -1008,9 +1098,9 @@ class P {
     this.connector.logger?.log("Add to queue", e, t), this.connector.logger?.log("Calling method", e, t);
     const n = await this.loadCode();
     this.connector.logger?.log("Code loaded, preparing");
-    const s = new E(this, n, this._onMessage);
+    const s = new P(this, n, this._onMessage);
     this.connector.logger?.log("Code loaded, iframe initialized"), await s.readyPromise, this.connector.logger?.log("Iframe ready");
-    const o = u();
+    const o = g();
     return new Promise((i, a) => {
       try {
         const l = (c) => {
@@ -1034,14 +1124,17 @@ class P {
       localStorage.removeItem(t);
   }
 }
-class m {
+class p {
   constructor(e, t) {
-    this.connector = e, this.manifest = t, this.executor = new P(e, t);
+    this.connector = e, this.manifest = t, this.executor = new M(e, t);
   }
   executor;
   async signIn(e) {
-    const t = e?.network || this.connector.network;
-    return this.executor.call("wallet:signIn", { network: t });
+    return this.executor.call("wallet:signIn", {
+      network: e?.network || this.connector.network,
+      contractId: e?.contractId,
+      methodNames: e?.methodNames
+    });
   }
   async signOut(e) {
     const t = { ...e, network: e?.network || this.connector.network };
@@ -1052,21 +1145,22 @@ class m {
     return this.executor.call("wallet:getAccounts", t);
   }
   async signAndSendTransaction(e) {
-    await this.connector.validateBannedNearAddressInTx(e);
-    const t = { ...e, network: e.network || this.connector.network };
-    return this.executor.call("wallet:signAndSendTransaction", t);
+    const t = w(e.actions), n = { ...e, actions: t, network: e.network || this.connector.network };
+    return this.executor.call("wallet:signAndSendTransaction", n);
   }
   async signAndSendTransactions(e) {
-    const t = { ...e, network: e.network || this.connector.network };
-    for (const n of e.transactions) await this.connector.validateBannedNearAddressInTx(n);
-    return this.executor.call("wallet:signAndSendTransactions", t);
+    const t = e.transactions.map((s) => ({
+      actions: w(s.actions),
+      receiverId: s.receiverId
+    })), n = { ...e, transactions: t, network: e.network || this.connector.network };
+    return this.executor.call("wallet:signAndSendTransactions", n);
   }
   async signMessage(e) {
     const t = { ...e, network: e.network || this.connector.network };
     return this.executor.call("wallet:signMessage", t);
   }
 }
-class $ {
+class N {
   constructor(e, t) {
     this.connector = e, this.wallet = t;
   }
@@ -1074,8 +1168,11 @@ class $ {
     return this.wallet.manifest;
   }
   async signIn(e) {
-    const t = e?.network || this.connector.network;
-    return this.wallet.signIn({ network: t });
+    return this.wallet.signIn({
+      network: e?.network || this.connector.network,
+      contractId: e?.contractId,
+      methodNames: e?.methodNames
+    });
   }
   async signOut(e) {
     await this.wallet.signOut({ network: e?.network || this.connector.network });
@@ -1084,22 +1181,23 @@ class $ {
     return this.wallet.getAccounts({ network: e?.network || this.connector.network });
   }
   async signAndSendTransaction(e) {
-    await this.connector.validateBannedNearAddressInTx(e);
-    const t = e.network || this.connector.network, n = await this.wallet.signAndSendTransaction({ ...e, network: t });
-    if (!n) throw new Error("No result from wallet");
-    return Array.isArray(n.transactions) ? n.transactions[0] : n;
+    const t = w(e.actions), n = e.network || this.connector.network, s = await this.wallet.signAndSendTransaction({ ...e, actions: t, network: n });
+    if (!s) throw new Error("No result from wallet");
+    return Array.isArray(s.transactions) ? s.transactions[0] : s;
   }
   async signAndSendTransactions(e) {
-    for (const s of e.transactions) await this.connector.validateBannedNearAddressInTx(s);
-    const t = e.network || this.connector.network, n = await this.wallet.signAndSendTransactions({ ...e, network: t });
-    if (!n) throw new Error("No result from wallet");
-    return Array.isArray(n.transactions) ? n.transactions : n;
+    const t = e.network || this.connector.network, n = e.transactions.map((o) => ({
+      actions: w(o.actions),
+      receiverId: o.receiverId
+    })), s = await this.wallet.signAndSendTransactions({ ...e, transactions: n, network: t });
+    if (!s) throw new Error("No result from wallet");
+    return Array.isArray(s.transactions) ? s.transactions : s;
   }
   async signMessage(e) {
     return this.wallet.signMessage({ ...e, network: e.network || this.connector.network });
   }
 }
-const M = {
+const W = {
   id: "custom-wallet",
   name: "Custom Wallet",
   icon: "https://www.mynearwallet.com/images/webclip.png",
@@ -1120,7 +1218,7 @@ const M = {
     allowsOpen: []
   }
 };
-class N extends y {
+class L extends b {
   constructor(e) {
     super(e), this.delegate = e, this.update({ wallets: e.wallets, showSettings: !1 });
   }
@@ -1146,7 +1244,7 @@ class N extends y {
     super.create({ show: !0 });
   }
   walletDom(e) {
-    const t = w`
+    const t = u`
       <svg
         class="remove-wallet-button"
         data-type="${e.id}"
@@ -1161,7 +1259,7 @@ class N extends y {
         <path d="M6 6L18 18" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
     `;
-    return w`
+    return u`
       <div class="connect-item" data-type="${e.id}">
         <img style="background: #333" src="${e.icon}" alt="${e.name}" />
         <div class="connect-item-info">
@@ -1173,7 +1271,7 @@ class N extends y {
     `;
   }
   get dom() {
-    return this.state.showSettings ? w`
+    return this.state.showSettings ? u`
         <div class="modal-container">
           <div class="modal-content">
             <div class="modal-header">
@@ -1191,7 +1289,7 @@ class N extends y {
                 <a href="https://github.com/azbang/hot-connector" target="_blank">read the documentation.</a> Paste your manifest and click "Add".
               </p>
 
-              <textarea style="width: 100%;" id="debug-manifest-input" rows="10">${JSON.stringify(M, null, 2)}</textarea>
+              <textarea style="width: 100%;" id="debug-manifest-input" rows="10">${JSON.stringify(W, null, 2)}</textarea>
               <button class="add-debug-manifest-button">Add</button>
             </div>
 
@@ -1202,7 +1300,7 @@ class N extends y {
             </div>
           </div>
         </div>
-      ` : w`<div class="modal-container">
+      ` : u`<div class="modal-container">
       <div class="modal-content">
         <div class="modal-header">
           <p>Select wallet</p>
@@ -1226,7 +1324,7 @@ class N extends y {
     </div>`;
   }
 }
-class W {
+class j {
   dbName;
   storeName;
   version;
@@ -1350,7 +1448,7 @@ class W {
     });
   }
 }
-const L = [
+const O = [
   "https://raw.githubusercontent.com/hot-dao/near-selector/refs/heads/main/repository/manifest.json",
   "https://cdn.jsdelivr.net/gh/azbang/hot-connector/repository/manifest.json"
 ];
@@ -1365,18 +1463,18 @@ class T {
   network = "mainnet";
   providers = { mainnet: [], testnet: [] };
   walletConnect;
+  signInData;
   excludedWallets = [];
   autoConnect;
-  isBannedNearAddress;
   whenManifestLoaded;
   constructor(e) {
-    this.db = new W("hot-connector", "wallets"), this.storage = e?.storage ?? new b(), this.events = e?.events ?? new f(), this.logger = e?.logger, this.network = e?.network ?? "mainnet", this.walletConnect = e?.walletConnect, this.isBannedNearAddress = e?.isBannedNearAddress, this.autoConnect = e?.autoConnect ?? !0, this.providers = e?.providers ?? { mainnet: [], testnet: [] }, this.excludedWallets = e?.excludedWallets ?? [], this.features = e?.features ?? {}, this.whenManifestLoaded = new Promise(async (t) => {
+    this.db = new j("hot-connector", "wallets"), this.storage = e?.storage ?? new v(), this.events = e?.events ?? new f(), this.logger = e?.logger, this.network = e?.network ?? "mainnet", this.walletConnect = e?.walletConnect, this.autoConnect = e?.autoConnect ?? !0, this.providers = e?.providers ?? { mainnet: [], testnet: [] }, this.excludedWallets = e?.excludedWallets ?? [], this.features = e?.features ?? {}, this.signInData = e?.signIn, this.whenManifestLoaded = new Promise(async (t) => {
       e?.manifest == null || typeof e.manifest == "string" ? this.manifest = await this._loadManifest(e?.manifest).catch(() => ({ wallets: [], version: "1.0.0" })) : this.manifest = e?.manifest ?? { wallets: [], version: "1.0.0" };
       const n = new Set(this.excludedWallets);
       n.delete("hot-wallet"), this.manifest.wallets = this.manifest.wallets.filter((s) => !(s.permissions.walletConnect && !this.walletConnect || n.has(s.id))), await new Promise((s) => setTimeout(s, 100)), t();
     }), typeof window < "u" && (window.addEventListener("near-wallet-injected", this._handleNearWalletInjected), window.dispatchEvent(new Event("near-selector-ready")), window.addEventListener("message", async (t) => {
       t.data.type === "near-wallet-injected" && (await this.whenManifestLoaded.catch(() => {
-      }), this.wallets = this.wallets.filter((n) => n.manifest.id !== t.data.manifest.id), this.wallets.unshift(new v(this, t.data.manifest)), this.events.emit("selector:walletsChanged", {}), this.autoConnect && this.connect(t.data.manifest.id));
+      }), this.wallets = this.wallets.filter((n) => n.manifest.id !== t.data.manifest.id), this.wallets.unshift(new S(this, t.data.manifest)), this.events.emit("selector:walletsChanged", {}), this.autoConnect && this.connect(t.data.manifest.id));
     })), this.whenManifestLoaded.then(() => {
       typeof window < "u" && window.parent.postMessage({ type: "near-selector-ready" }, "*"), this.manifest.wallets.forEach((t) => this.registerWallet(t)), this.storage.get("debug-wallets").then((t) => {
         JSON.parse(t ?? "[]").forEach((s) => this.registerDebugWallet(s));
@@ -1385,6 +1483,8 @@ class T {
   }
   _client = null;
   async getWalletConnect() {
+    if (!this.walletConnect) throw new Error("WalletConnect is not configured");
+    if (!("projectId" in this.walletConnect)) return this.walletConnect;
     const e = await import("@walletconnect/sign-client");
     return this._client ? this._client : (this._client = await e.default.init({
       projectId: this.walletConnect?.projectId,
@@ -1392,14 +1492,18 @@ class T {
       relayUrl: "wss://relay.walletconnect.com"
     }), this._client);
   }
+  get walletConnectProjectId() {
+    if (!this.walletConnect) throw new Error("WalletConnect is not configured");
+    return "projectId" in this.walletConnect ? this.walletConnect.projectId : this.walletConnect.core.projectId;
+  }
   get availableWallets() {
     return this.wallets.filter((t) => Object.entries(this.features).every(([n, s]) => !(s && !t.manifest.features?.[n]))).filter((t) => !(this.network === "testnet" && !t.manifest.features?.testnet));
   }
   _handleNearWalletInjected = (e) => {
-    this.wallets = this.wallets.filter((t) => t.manifest.id !== e.detail.manifest.id), this.wallets.unshift(new $(this, e.detail)), this.events.emit("selector:walletsChanged", {});
+    this.wallets = this.wallets.filter((t) => t.manifest.id !== e.detail.manifest.id), this.wallets.unshift(new N(this, e.detail)), this.events.emit("selector:walletsChanged", {});
   };
   async _loadManifest(e) {
-    const t = e ? [e] : L;
+    const t = e ? [e] : O;
     for (const n of t) {
       const s = await fetch(n).catch(() => null);
       if (!(!s || !s.ok))
@@ -1407,30 +1511,13 @@ class T {
     }
     throw new Error("Failed to load manifest");
   }
-  async disconnectIfBanned(e, t) {
-    if (this.isBannedNearAddress) {
-      for (const n of t)
-        if (await this.isBannedNearAddress(n.accountId))
-          throw await this.disconnect(e), new Error("Banned near address");
-    }
-  }
-  async validateBannedNearAddressInTx(e) {
-    if (!this.isBannedNearAddress) return;
-    if (await this.isBannedNearAddress(e.receiverId)) throw new Error("Banned receiver address");
-    for (const n of e.actions)
-      if (n.type === "FunctionCall") {
-        const s = n.params.args.receiver_id;
-        if (typeof s != "string") continue;
-        if (await this.isBannedNearAddress(s)) throw new Error("Banned receiver address");
-      }
-  }
-  async switchNetwork(e) {
-    await this.disconnect().catch(() => {
-    }), this.network = e, await this.connect();
+  async switchNetwork(e, t) {
+    this.network !== e && (await this.disconnect().catch(() => {
+    }), t && (this.signInData = t), this.network = e, await this.connect());
   }
   async registerWallet(e) {
     if (e.type !== "sandbox") throw new Error("Only sandbox wallets are supported");
-    this.wallets.find((t) => t.manifest.id === e.id) || (this.wallets.push(new m(this, e)), this.events.emit("selector:walletsChanged", {}));
+    this.wallets.find((t) => t.manifest.id === e.id) || (this.wallets.push(new p(this, e)), this.events.emit("selector:walletsChanged", {}));
   }
   async registerDebugWallet(e) {
     const t = typeof e == "string" ? JSON.parse(e) : e;
@@ -1444,7 +1531,7 @@ class T {
     if (!t.features) throw new Error("Manifest must have features");
     if (!t.permissions) throw new Error("Manifest must have permissions");
     if (this.wallets.find((s) => s.manifest.id === t.id)) throw new Error("Wallet already registered");
-    t.debug = !0, this.wallets.unshift(new m(this, t)), this.events.emit("selector:walletsChanged", {});
+    t.debug = !0, this.wallets.unshift(new p(this, t)), this.events.emit("selector:walletsChanged", {});
     const n = this.wallets.filter((s) => s.manifest.debug).map((s) => s.manifest);
     return this.storage.set("debug-wallets", JSON.stringify(n)), t;
   }
@@ -1456,7 +1543,7 @@ class T {
   async selectWallet() {
     return await this.whenManifestLoaded.catch(() => {
     }), new Promise((e, t) => {
-      const n = new N({
+      const n = new L({
         wallets: this.availableWallets.map((s) => s.manifest),
         onRemoveDebugManifest: async (s) => this.removeDebugWallet(s),
         onAddDebugManifest: async (s) => this.registerDebugWallet(s),
@@ -1472,9 +1559,13 @@ class T {
     try {
       const t = await this.wallet(e);
       this.logger?.log("Wallet available to connect", t), await this.storage.set("selected-wallet", e), this.logger?.log("Set preferred wallet, try to signIn", e);
-      const n = await t.signIn();
+      const n = await t.signIn({
+        contractId: this.signInData?.contractId,
+        methodNames: this.signInData?.methodNames,
+        network: this.network
+      });
       if (!n?.length) throw new Error("Failed to sign in");
-      return await this.disconnectIfBanned(t, n), this.logger?.log("Signed in to wallet", e, n), this.events.emit("wallet:signIn", { wallet: t, accounts: n, success: !0 }), t;
+      return this.logger?.log("Signed in to wallet", e, n), this.events.emit("wallet:signIn", { wallet: t, accounts: n, success: !0 }), t;
     } catch (t) {
       throw this.logger?.log("Failed to connect to wallet", t), t;
     }
@@ -1489,7 +1580,7 @@ class T {
     if (!t) throw new Error("No wallet selected");
     const n = await t.getAccounts();
     if (!n?.length) throw new Error("No accounts found");
-    return await this.disconnectIfBanned(t, n), { wallet: t, accounts: n };
+    return { wallet: t, accounts: n };
   }
   async wallet(e) {
     if (await this.whenManifestLoaded.catch(() => {
@@ -1514,14 +1605,11 @@ class T {
     this.events.removeAllListeners(e);
   }
 }
-const j = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null
-}, Symbol.toStringTag, { value: "Module" }));
 export {
-  $ as InjectedWallet,
-  b as LocalStorage,
+  N as InjectedWallet,
+  v as LocalStorage,
   T as NearConnector,
-  v as ParentFrameWallet,
-  m as SandboxWallet,
-  j as tx
+  S as ParentFrameWallet,
+  p as SandboxWallet,
+  w as nearActionsToConnectorActions
 };

@@ -4,16 +4,14 @@ export interface CreateAccountAction {
 
 export interface DeployContractAction {
   type: "DeployContract";
-  params: {
-    code: Uint8Array;
-  };
+  params: { code: Uint8Array };
 }
 
 export interface FunctionCallAction {
   type: "FunctionCall";
   params: {
     methodName: string;
-    args: Record<string, unknown>;
+    args: object;
     gas: string;
     deposit: string;
   };
@@ -21,9 +19,7 @@ export interface FunctionCallAction {
 
 export interface TransferAction {
   type: "Transfer";
-  params: {
-    deposit: string;
-  };
+  params: { deposit: string };
 }
 
 export interface StakeAction {
@@ -34,40 +30,49 @@ export interface StakeAction {
   };
 }
 
-export type AddKeyPermission =
-  | "FullAccess"
-  | {
-      receiverId: string;
-      allowance?: string;
-      methodNames?: Array<string>;
-    };
-
 export interface AddKeyAction {
   type: "AddKey";
   params: {
     publicKey: string;
     accessKey: {
       nonce?: number;
-      permission: AddKeyPermission;
+      permission:
+        | "FullAccess"
+        | {
+            receiverId: string;
+            allowance?: string;
+            methodNames?: Array<string>;
+          };
     };
   };
 }
 
 export interface DeleteKeyAction {
   type: "DeleteKey";
-  params: {
-    publicKey: string;
-  };
+  params: { publicKey: string };
 }
 
 export interface DeleteAccountAction {
   type: "DeleteAccount";
+  params: { beneficiaryId: string };
+}
+
+export interface UseGlobalContractAction {
+  type: "UseGlobalContract";
   params: {
-    beneficiaryId: string;
+    contractIdentifier?: {
+      AccountId?: string;
+      CodeHash?: Uint8Array;
+    };
   };
 }
 
-export type Action =
+export interface DeployGlobalContractAction {
+  type: "DeployGlobalContract";
+  params: { code: Uint8Array; deployMode?: { AccountId?: string | null; CodeHash?: Uint8Array | null } };
+}
+
+export type ConnectorAction =
   | CreateAccountAction
   | DeployContractAction
   | FunctionCallAction
@@ -75,12 +80,6 @@ export type Action =
   | StakeAction
   | AddKeyAction
   | DeleteKeyAction
-  | DeleteAccountAction;
-
-export type ActionType = Action["type"];
-
-export interface Transaction {
-  signerId: string;
-  receiverId: string;
-  actions: Array<Action>;
-}
+  | DeleteAccountAction
+  | UseGlobalContractAction
+  | DeployGlobalContractAction;

@@ -1,3 +1,8 @@
+# 0.7.0
+
+- add UseGlobalContractAction, DeployGlobalContractAction
+- support Actions from @near-js
+
 # 0.6.11
 
 - Add `signIn` to setup limited access key (deprecated flow)

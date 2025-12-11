@@ -21,7 +21,7 @@ export const ExampleNEAR: FC = () => {
 
   const [connector] = useState<NearConnector>(() => {
     const connector = new NearConnector({
-      // manifest: "/near-connect/manifest.json",
+      manifest: process.env.NODE_ENV === "production" ? undefined : "/near-connect/repository/manifest.json",
       providers: { mainnet: ["https://relmn.aurora.dev"] },
       network,
       logger,
