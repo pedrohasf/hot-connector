@@ -104,8 +104,6 @@ export const connectorActionsToNearActions = (actions: ConnectorAction[]): Actio
   return actions.map((action) => {
     if (!("type" in action)) return action as Action;
 
-    alert(action.type);
-
     if (action.type === "FunctionCall") {
       return actionCreators.functionCall(action.params.methodName, action.params.args as any, BigInt(action.params.gas), BigInt(action.params.deposit));
     }
