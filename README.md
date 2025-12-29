@@ -38,7 +38,7 @@ connector.on("wallet:signIn", async (t) => {
 
 ## WalletConnect support (optional)
 
-Some wallets works only when you pass WalletConnect sign client to NearConnector, without it this wallets does not apper as option to connect
+Some wallets only work when you pass WalletConnect sign client to NearConnector, without it these wallets do not appear as an option to connect
 
 ```ts
 // Or use Reown appKit
