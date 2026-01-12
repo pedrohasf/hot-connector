@@ -195,3 +195,12 @@ In fact, main target for audit is `src/wallets/near-wallets/SandboxedWallet/*`.
 Additional:
 Auditing `src/helpers` will help assess the correctness of the coding algorithms.
 Auditing `src/popups` will help assess the correctness of interaction with the DOM, the presence of potential XSS attacks.
+
+## Contributions
+
+**Main contributor:**
+
+Andrei Zhevlakov (CTO at HOT Labs)
+
+andrey@herewallet.app
+
