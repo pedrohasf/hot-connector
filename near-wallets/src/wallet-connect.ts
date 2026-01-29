@@ -104,24 +104,12 @@ const disconnect = async () => {
   });
 };
 
-const getSignatureData = (result: any) => {
+const getSignatureData = (result: Uint8Array) => {
   if (result instanceof Uint8Array) {
     return result;
   } else if (Array.isArray(result)) {
     return new Uint8Array(result);
   } else if (typeof result === "object" && result !== null) {
-    // Check if it's a Buffer-like object {type: 'Buffer', data: {...}}
-    if ("type" in result && "data" in result) {
-      const data = result.data;
-      // data might be an Array or an Object with numeric keys {0: 64, 1: 0, ...}
-      if (Array.isArray(data)) {
-        return new Uint8Array(data);
-      } else if (typeof data === "object" && data !== null) {
-        // Convert {0: 64, 1: 0, 2: 0, ...} to [64, 0, 0, ...]
-        return new Uint8Array(Object.values(data));
-      }
-    }
-    // Fallback: try Object.values on the result itself
     return new Uint8Array(Object.values(result));
   } else {
     throw new Error("Unexpected result type from near_signTransaction");
@@ -132,33 +120,10 @@ const WalletConnect = async () => {
   const getAccounts = async (network: string): Promise<Array<{ accountId: string; publicKey: string }>> => {
     const session = await window.selector.walletConnect.getSession();
     if (!session) return [];
-
-    const accounts = session.namespaces["near"].accounts.map((account: string) => ({
+    return session.namespaces["near"].accounts.map((account: string) => ({
       accountId: account.replace(`near:${network}:`, ""),
       publicKey: "",
     }));
-    try {
-      const accountsWithKeys = await window.selector.walletConnect.request({
-        topic: session.topic,
-        chainId: `near:${network}`,
-        request: {
-          method: "near_getAccounts",
-          params: {},
-        },
-      });
-
-      if (accountsWithKeys && Array.isArray(accountsWithKeys)) {
-        return accountsWithKeys.map((account: any) => ({
-          accountId: account.accountId || account.accountId,
-          publicKey: account.publicKey || "",
-        }));
-      }
-    } catch (err) {
-      // If near_getAccounts fails, fall back to using empty public key
-      // The public key will be fetched when needed for signing
-    }
-
-    return accounts;
   };
 
   const requestAccounts = async (network: string) => {
@@ -194,111 +159,40 @@ const WalletConnect = async () => {
   };
 
   const requestSignTransaction = async (transaction: { signerId: string; receiverId: string; actions: Array<Action> }, network: string) => {
-    console.log("[wallet-connect] requestSignTransaction called", { signerId: transaction.signerId, network });
-
-    const accounts = await getAccounts(network);
-    console.log("[wallet-connect] Got accounts", accounts);
-
+    const accounts = await requestAccounts(network);
     const account = accounts.find((x: any) => x.accountId === transaction.signerId);
     if (!account) throw new Error("Invalid signer id");
 
-    // If publicKey is not available, we need to fetch it
-    let publicKeyStr = account.publicKey;
-    console.log("[wallet-connect] Account publicKey status", { hasPublicKey: !!publicKeyStr });
-
-    if (!publicKeyStr) {
-      try {
-        console.log("[wallet-connect] Fetching public key via view_access_key_list");
-        // Try to get the first access key for this account
-        const accessKeysResponse = await provider.query<any>({
-          request_type: "view_access_key_list",
-          finality: "final",
-          account_id: transaction.signerId,
-        });
-
-        console.log("[wallet-connect] Got access keys response", accessKeysResponse);
-
-        if (accessKeysResponse?.keys?.length > 0) {
-          publicKeyStr = accessKeysResponse.keys[0].public_key;
-          console.log("[wallet-connect] Resolved public key", publicKeyStr);
-        } else {
-          throw new Error("No access keys found for account");
-        }
-      } catch (err) {
-        console.error("[wallet-connect] Failed to fetch public key", err);
-        throw new Error(`Failed to fetch public key for account ${transaction.signerId}: ${err}`);
-      }
-    }
-
-    console.log("[wallet-connect] Fetching block and access key");
     const [block, accessKey] = await Promise.all([
       provider.block({ finality: "final" }),
       provider.query<AccessKeyViewRaw>({
         request_type: "view_access_key",
         finality: "final",
         account_id: transaction.signerId,
-        public_key: publicKeyStr,
+        public_key: account.publicKey,
       }),
     ]);
 
-    console.log("[wallet-connect] Got block and access key", { blockHeight: block.header.height, nonce: accessKey.nonce });
-
     const tx = createTransaction(
       transaction.signerId,
-      PublicKey.from(publicKeyStr),
+      PublicKey.from(account.publicKey),
       transaction.receiverId,
       accessKey.nonce + 1,
       transaction.actions,
       baseDecode(block.header.hash),
     );
 
-    console.log("[wallet-connect] Transaction created, sending to Fireblocks");
     const encodedTx = tx.encode();
-    console.log("[wallet-connect] Transaction to sign:", {
-      signerId: tx.signerId,
-      receiverId: tx.receiverId,
-      nonce: tx.nonce,
-      blockHash: tx.blockHash,
-    });
 
-    const session = await window.selector.walletConnect.getSession();
-    console.log("[wallet-connect] Got session", {
-      hasTopic: !!session?.topic,
-      topic: session?.topic,
-      namespaces: Object.keys(session?.namespaces || {}),
-    });
-
-    console.log("[wallet-connect] Sending request to Fireblocks via WalletConnect", {
-      method: "near_signTransaction",
+    const txArray = Array.from(encodedTx);
+    const result = await window.selector.walletConnect.request({
+      topic: (await window.selector.walletConnect.getSession()).topic,
       chainId: `near:${network}`,
-      txLength: encodedTx.length,
+      request: {
+        method: "near_signTransaction",
+        params: { transaction: txArray },
+      },
     });
-
-    let result: any;
-    try {
-      // Send as Buffer format for proper WalletConnect NEAR RPC serialization
-      const txBuffer = {
-        type: "Buffer",
-        data: Array.from(encodedTx),
-      };
-      result = await window.selector.walletConnect.request({
-        topic: session.topic,
-        chainId: `near:${network}`,
-        request: {
-          method: "near_signTransaction",
-          params: { transaction: txBuffer },
-        },
-      });
-
-      console.log("[wallet-connect] Got signature result", { resultType: typeof result, resultLength: result?.length });
-    } catch (err) {
-      console.error("[wallet-connect] WalletConnect request failed", {
-        error: err,
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-      throw err;
-    }
 
     const signatureData = getSignatureData(result);
     return SignedTransaction.decode(Buffer.from(signatureData));
@@ -307,43 +201,24 @@ const WalletConnect = async () => {
   const requestSignTransactions = async (transactions: Array<{ signerId: string; receiverId: string; actions: Array<Action> }>, network: string) => {
     if (!transactions.length) return [];
     const txs: Array<Transaction> = [];
-    const [block, accounts] = await Promise.all([provider.block({ finality: "final" }), getAccounts(network)]);
+    const [block, accounts] = await Promise.all([provider.block({ finality: "final" }), requestAccounts(network)]);
 
     for (let i = 0; i < transactions.length; i += 1) {
       const transaction = transactions[i];
       const account = accounts.find((x: any) => x.accountId === transaction.signerId);
       if (!account) throw new Error("Invalid signer id");
 
-      // If publicKey is not available, we need to fetch it
-      let publicKeyStr = account.publicKey;
-      if (!publicKeyStr) {
-        try {
-          // Try to get the first access key for this account
-          const accessKeysResponse = await provider.query<any>({
-            request_type: "view_access_key_list",
-            finality: "final",
-            account_id: transaction.signerId,
-          });
-
-          if (accessKeysResponse?.keys?.length > 0) {
-            publicKeyStr = accessKeysResponse.keys[0].public_key;
-          }
-        } catch (err) {
-          throw new Error(`Failed to fetch public key for account ${transaction.signerId}`);
-        }
-      }
-
       const accessKey = await provider.query<AccessKeyViewRaw>({
         request_type: "view_access_key",
         finality: "final",
         account_id: transaction.signerId,
-        public_key: publicKeyStr,
+        public_key: account.publicKey,
       });
 
       txs.push(
         createTransaction(
           transaction.signerId,
-          PublicKey.from(publicKeyStr),
+          PublicKey.from(account.publicKey),
           transaction.receiverId,
           accessKey.nonce + i + 1,
           transaction.actions,
@@ -352,9 +227,8 @@ const WalletConnect = async () => {
       );
     }
 
-    const session = await window.selector.walletConnect.getSession();
     const results = await window.selector.walletConnect.request({
-      topic: session.topic,
+      topic: (await window.selector.walletConnect.getSession()).topic,
       chainId: `near:${network}`,
       request: {
         method: "near_signTransactions",
