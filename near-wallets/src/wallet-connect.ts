@@ -104,12 +104,24 @@ const disconnect = async () => {
   });
 };
 
-const getSignatureData = (result: Uint8Array) => {
+const getSignatureData = (result: any) => {
   if (result instanceof Uint8Array) {
     return result;
   } else if (Array.isArray(result)) {
     return new Uint8Array(result);
   } else if (typeof result === "object" && result !== null) {
+    // Check if it's a Buffer-like object {type: 'Buffer', data: {...}}
+    if ('type' in result && 'data' in result) {
+      const data = result.data;
+      // data might be an Array or an Object with numeric keys {0: 64, 1: 0, ...}
+      if (Array.isArray(data)) {
+        return new Uint8Array(data);
+      } else if (typeof data === 'object' && data !== null) {
+        // Convert {0: 64, 1: 0, 2: 0, ...} to [64, 0, 0, ...]
+        return new Uint8Array(Object.values(data));
+      }
+    }
+    // Fallback: try Object.values on the result itself
     return new Uint8Array(Object.values(result));
   } else {
     throw new Error("Unexpected result type from near_signTransaction");
@@ -265,12 +277,16 @@ const WalletConnect = async () => {
 
     let result: any;
     try {
+      // Convert Uint8Array to plain Array for proper WalletConnect serialization
+      const txArray = Array.from(encodedTx);
+      console.log("[wallet-connect] Converted transaction to Array", { arrayLength: txArray.length });
+
       result = await window.selector.walletConnect.request({
         topic: session.topic,
         chainId: `near:${network}`,
         request: {
           method: "near_signTransaction",
-          params: { transaction: encodedTx },
+          params: { transaction: txArray },
         },
       });
 
@@ -279,6 +295,7 @@ const WalletConnect = async () => {
       console.error("[wallet-connect] WalletConnect request failed", {
         error: err,
         message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
       });
       throw err;
     }
