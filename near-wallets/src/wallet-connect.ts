@@ -241,20 +241,47 @@ const WalletConnect = async () => {
     );
 
     console.log("[wallet-connect] Transaction created, sending to Fireblocks");
-
-    const session = await window.selector.walletConnect.getSession();
-    console.log("[wallet-connect] Got session", { hasTopic: !!session?.topic });
-
-    const result = await window.selector.walletConnect.request({
-      topic: session.topic,
-      chainId: `near:${network}`,
-      request: {
-        method: "near_signTransaction",
-        params: { transaction: tx.encode() },
-      },
+    const encodedTx = tx.encode();
+    console.log("[wallet-connect] Transaction to sign:", {
+      signerId: tx.signerId,
+      receiverId: tx.receiverId,
+      nonce: tx.nonce,
+      blockHash: tx.blockHash,
+      encoded: Buffer.from(encodedTx).toString("base64").substring(0, 50) + "...",
     });
 
-    console.log("[wallet-connect] Got signature result");
+    const session = await window.selector.walletConnect.getSession();
+    console.log("[wallet-connect] Got session", {
+      hasTopic: !!session?.topic,
+      topic: session?.topic,
+      namespaces: Object.keys(session?.namespaces || {}),
+    });
+
+    console.log("[wallet-connect] Sending request to Fireblocks via WalletConnect", {
+      method: "near_signTransaction",
+      chainId: `near:${network}`,
+      txLength: encodedTx.length,
+    });
+
+    let result: any;
+    try {
+      result = await window.selector.walletConnect.request({
+        topic: session.topic,
+        chainId: `near:${network}`,
+        request: {
+          method: "near_signTransaction",
+          params: { transaction: encodedTx },
+        },
+      });
+
+      console.log("[wallet-connect] Got signature result", { resultType: typeof result, resultLength: result?.length });
+    } catch (err) {
+      console.error("[wallet-connect] WalletConnect request failed", {
+        error: err,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
 
     const signatureData = getSignatureData(result);
     return SignedTransaction.decode(Buffer.from(signatureData));
