@@ -274,9 +274,6 @@ const WalletConnect = async () => {
       txLength: encodedTx.length,
     });
 
-    // Convert Uint8Array to plain Array for proper WalletConnect serialization
-    const txArray = Array.from(encodedTx);
-    console.log("[wallet-connect] Converted transaction to Array", { arrayLength: txArray.length });
     let result: any;
     try {
       result = await window.selector.walletConnect.request({
@@ -284,7 +281,7 @@ const WalletConnect = async () => {
         chainId: `near:${network}`,
         request: {
           method: "near_signTransaction",
-          params: { transaction: txArray },
+          params: { transaction: encodedTx },
         },
       });
 
