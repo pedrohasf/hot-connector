@@ -276,14 +276,17 @@ const WalletConnect = async () => {
 
     let result: any;
     try {
-      // Send as Array which postMessage will handle and executor will convert back to Uint8Array
-      const txArray = Array.from(encodedTx);
+      // Send as Buffer format for proper WalletConnect NEAR RPC serialization
+      const txBuffer = {
+        type: "Buffer",
+        data: Array.from(encodedTx),
+      };
       result = await window.selector.walletConnect.request({
         topic: session.topic,
         chainId: `near:${network}`,
         request: {
           method: "near_signTransaction",
-          params: { transaction: txArray },
+          params: { transaction: txBuffer },
         },
       });
 
