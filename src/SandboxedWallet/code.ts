@@ -311,7 +311,8 @@ async function getIframeCode(args: { id: string; executor: SandboxExecutor; code
           const result = await wallet[method](event.data.params);
           window.parent.postMessage({ ...payload, status: "success", result }, "*");
         } catch (error) {
-          const data = { ...payload, status: "failed", result: error };
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const data = { ...payload, status: "failed", result: errorMessage };
           window.parent.postMessage(data, "*");
         }
       });

@@ -182,14 +182,21 @@ const WalletConnect = async () => {
   };
 
   const requestSignTransaction = async (transaction: { signerId: string; receiverId: string; actions: Array<Action> }, network: string) => {
+    console.log("[wallet-connect] requestSignTransaction called", { signerId: transaction.signerId, network });
+
     const accounts = await getAccounts(network);
+    console.log("[wallet-connect] Got accounts", accounts);
+
     const account = accounts.find((x: any) => x.accountId === transaction.signerId);
     if (!account) throw new Error("Invalid signer id");
 
     // If publicKey is not available, we need to fetch it
     let publicKeyStr = account.publicKey;
+    console.log("[wallet-connect] Account publicKey status", { hasPublicKey: !!publicKeyStr });
+
     if (!publicKeyStr) {
       try {
+        console.log("[wallet-connect] Fetching public key via view_access_key_list");
         // Try to get the first access key for this account
         const accessKeysResponse = await provider.query<any>({
           request_type: "view_access_key_list",
@@ -197,14 +204,21 @@ const WalletConnect = async () => {
           account_id: transaction.signerId,
         });
 
+        console.log("[wallet-connect] Got access keys response", accessKeysResponse);
+
         if (accessKeysResponse?.keys?.length > 0) {
           publicKeyStr = accessKeysResponse.keys[0].public_key;
+          console.log("[wallet-connect] Resolved public key", publicKeyStr);
+        } else {
+          throw new Error("No access keys found for account");
         }
       } catch (err) {
-        throw new Error(`Failed to fetch public key for account ${transaction.signerId}`);
+        console.error("[wallet-connect] Failed to fetch public key", err);
+        throw new Error(`Failed to fetch public key for account ${transaction.signerId}: ${err}`);
       }
     }
 
+    console.log("[wallet-connect] Fetching block and access key");
     const [block, accessKey] = await Promise.all([
       provider.block({ finality: "final" }),
       provider.query<AccessKeyViewRaw>({
@@ -215,6 +229,8 @@ const WalletConnect = async () => {
       }),
     ]);
 
+    console.log("[wallet-connect] Got block and access key", { blockHeight: block.header.height, nonce: accessKey.nonce });
+
     const tx = createTransaction(
       transaction.signerId,
       PublicKey.from(publicKeyStr),
@@ -224,7 +240,11 @@ const WalletConnect = async () => {
       baseDecode(block.header.hash),
     );
 
+    console.log("[wallet-connect] Transaction created, sending to Fireblocks");
+
     const session = await window.selector.walletConnect.getSession();
+    console.log("[wallet-connect] Got session", { hasTopic: !!session?.topic });
+
     const result = await window.selector.walletConnect.request({
       topic: session.topic,
       chainId: `near:${network}`,
@@ -233,6 +253,8 @@ const WalletConnect = async () => {
         params: { transaction: tx.encode() },
       },
     });
+
+    console.log("[wallet-connect] Got signature result");
 
     const signatureData = getSignatureData(result);
     return SignedTransaction.decode(Buffer.from(signatureData));
