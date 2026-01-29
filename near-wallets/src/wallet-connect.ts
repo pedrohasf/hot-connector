@@ -120,10 +120,33 @@ const WalletConnect = async () => {
   const getAccounts = async (network: string): Promise<Array<{ accountId: string; publicKey: string }>> => {
     const session = await window.selector.walletConnect.getSession();
     if (!session) return [];
-    return session.namespaces["near"].accounts.map((account: string) => ({
+
+    const accounts = session.namespaces["near"].accounts.map((account: string) => ({
       accountId: account.replace(`near:${network}:`, ""),
       publicKey: "",
     }));
+    try {
+      const accountsWithKeys = await window.selector.walletConnect.request({
+        topic: session.topic,
+        chainId: `near:${network}`,
+        request: {
+          method: "near_getAccounts",
+          params: {},
+        },
+      });
+
+      if (accountsWithKeys && Array.isArray(accountsWithKeys)) {
+        return accountsWithKeys.map((account: any) => ({
+          accountId: account.accountId || account.accountId,
+          publicKey: account.publicKey || "",
+        }));
+      }
+    } catch (err) {
+      // If near_getAccounts fails, fall back to using empty public key
+      // The public key will be fetched when needed for signing
+    }
+
+    return accounts;
   };
 
   const requestAccounts = async (network: string) => {
@@ -139,7 +162,7 @@ const WalletConnect = async () => {
 
   const requestSignMessage = async (
     messageParams: { message: string; nonce: number; recipient: string; callbackUrl?: string; accountId?: string },
-    network: string
+    network: string,
   ) => {
     const { message, nonce, recipient, callbackUrl, accountId } = messageParams;
     return window.selector.walletConnect.request({
@@ -159,9 +182,28 @@ const WalletConnect = async () => {
   };
 
   const requestSignTransaction = async (transaction: { signerId: string; receiverId: string; actions: Array<Action> }, network: string) => {
-    const accounts = await requestAccounts(network);
+    const accounts = await getAccounts(network);
     const account = accounts.find((x: any) => x.accountId === transaction.signerId);
     if (!account) throw new Error("Invalid signer id");
+
+    // If publicKey is not available, we need to fetch it
+    let publicKeyStr = account.publicKey;
+    if (!publicKeyStr) {
+      try {
+        // Try to get the first access key for this account
+        const accessKeysResponse = await provider.query<any>({
+          request_type: "view_access_key_list",
+          finality: "final",
+          account_id: transaction.signerId,
+        });
+
+        if (accessKeysResponse?.keys?.length > 0) {
+          publicKeyStr = accessKeysResponse.keys[0].public_key;
+        }
+      } catch (err) {
+        throw new Error(`Failed to fetch public key for account ${transaction.signerId}`);
+      }
+    }
 
     const [block, accessKey] = await Promise.all([
       provider.block({ finality: "final" }),
@@ -169,21 +211,22 @@ const WalletConnect = async () => {
         request_type: "view_access_key",
         finality: "final",
         account_id: transaction.signerId,
-        public_key: account.publicKey,
+        public_key: publicKeyStr,
       }),
     ]);
 
     const tx = createTransaction(
       transaction.signerId,
-      PublicKey.from(account.publicKey),
+      PublicKey.from(publicKeyStr),
       transaction.receiverId,
       accessKey.nonce + 1,
       transaction.actions,
-      baseDecode(block.header.hash)
+      baseDecode(block.header.hash),
     );
 
+    const session = await window.selector.walletConnect.getSession();
     const result = await window.selector.walletConnect.request({
-      topic: (await window.selector.walletConnect.getSession()).topic,
+      topic: session.topic,
       chainId: `near:${network}`,
       request: {
         method: "near_signTransaction",
@@ -198,34 +241,54 @@ const WalletConnect = async () => {
   const requestSignTransactions = async (transactions: Array<{ signerId: string; receiverId: string; actions: Array<Action> }>, network: string) => {
     if (!transactions.length) return [];
     const txs: Array<Transaction> = [];
-    const [block, accounts] = await Promise.all([provider.block({ finality: "final" }), requestAccounts(network)]);
+    const [block, accounts] = await Promise.all([provider.block({ finality: "final" }), getAccounts(network)]);
 
     for (let i = 0; i < transactions.length; i += 1) {
       const transaction = transactions[i];
       const account = accounts.find((x: any) => x.accountId === transaction.signerId);
       if (!account) throw new Error("Invalid signer id");
 
+      // If publicKey is not available, we need to fetch it
+      let publicKeyStr = account.publicKey;
+      if (!publicKeyStr) {
+        try {
+          // Try to get the first access key for this account
+          const accessKeysResponse = await provider.query<any>({
+            request_type: "view_access_key_list",
+            finality: "final",
+            account_id: transaction.signerId,
+          });
+
+          if (accessKeysResponse?.keys?.length > 0) {
+            publicKeyStr = accessKeysResponse.keys[0].public_key;
+          }
+        } catch (err) {
+          throw new Error(`Failed to fetch public key for account ${transaction.signerId}`);
+        }
+      }
+
       const accessKey = await provider.query<AccessKeyViewRaw>({
         request_type: "view_access_key",
         finality: "final",
         account_id: transaction.signerId,
-        public_key: account.publicKey,
+        public_key: publicKeyStr,
       });
 
       txs.push(
         createTransaction(
           transaction.signerId,
-          PublicKey.from(account.publicKey),
+          PublicKey.from(publicKeyStr),
           transaction.receiverId,
           accessKey.nonce + i + 1,
           transaction.actions,
-          baseDecode(block.header.hash)
-        )
+          baseDecode(block.header.hash),
+        ),
       );
     }
 
+    const session = await window.selector.walletConnect.getSession();
     const results = await window.selector.walletConnect.request({
-      topic: (await window.selector.walletConnect.getSession()).topic,
+      topic: session.topic,
       chainId: `near:${network}`,
       request: {
         method: "near_signTransactions",
