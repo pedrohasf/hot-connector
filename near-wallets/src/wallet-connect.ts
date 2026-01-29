@@ -111,12 +111,12 @@ const getSignatureData = (result: any) => {
     return new Uint8Array(result);
   } else if (typeof result === "object" && result !== null) {
     // Check if it's a Buffer-like object {type: 'Buffer', data: {...}}
-    if ('type' in result && 'data' in result) {
+    if ("type" in result && "data" in result) {
       const data = result.data;
       // data might be an Array or an Object with numeric keys {0: 64, 1: 0, ...}
       if (Array.isArray(data)) {
         return new Uint8Array(data);
-      } else if (typeof data === 'object' && data !== null) {
+      } else if (typeof data === "object" && data !== null) {
         // Convert {0: 64, 1: 0, 2: 0, ...} to [64, 0, 0, ...]
         return new Uint8Array(Object.values(data));
       }
@@ -259,7 +259,6 @@ const WalletConnect = async () => {
       receiverId: tx.receiverId,
       nonce: tx.nonce,
       blockHash: tx.blockHash,
-      encoded: Buffer.from(encodedTx).toString("base64").substring(0, 50) + "...",
     });
 
     const session = await window.selector.walletConnect.getSession();
@@ -275,12 +274,11 @@ const WalletConnect = async () => {
       txLength: encodedTx.length,
     });
 
+    // Convert Uint8Array to plain Array for proper WalletConnect serialization
+    const txArray = Array.from(encodedTx);
+    console.log("[wallet-connect] Converted transaction to Array", { arrayLength: txArray.length });
     let result: any;
     try {
-      // Convert Uint8Array to plain Array for proper WalletConnect serialization
-      const txArray = Array.from(encodedTx);
-      console.log("[wallet-connect] Converted transaction to Array", { arrayLength: txArray.length });
-
       result = await window.selector.walletConnect.request({
         topic: session.topic,
         chainId: `near:${network}`,
